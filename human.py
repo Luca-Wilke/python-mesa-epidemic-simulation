@@ -16,6 +16,9 @@ class Human(RandomWalker):
         self.infected = infected
         self.infected_duration = 0
         self.infection_state = InfectionState.INCUBATION if self.infected else InfectionState.HEALTHY
+        # if the model virus does have immunity: immunity = infected. Else: immunity = false
+        self.immunity = self.infected if self.model.immunity is True else False
+        self.immunity_left = self.model.immunity_duration
 
     def get_other_humans_on_cell(self):
         # get list of human agents which are placed on the same cell
@@ -29,17 +32,19 @@ class Human(RandomWalker):
             InfectionState.INCUBATION
         if self.infected_duration >= self.model.incubation_time + self.model.duration:
             # cured
-            print("Agent " + str(self.unique_id) + " has been cured.")
+            # print("Agent " + str(self.unique_id) + " has been cured")
             self.infected = False
             self.infected_duration = 0
             self.model.num_infected -= 1
+            self.model.total_cured += 1
+            self.model.current_cured += 1
             return
         if self.infection_state is InfectionState.SYMPTOMS:
             # die with a probability of self.model.mortality_rate / self.model.duration
             chance_of_dying = self.model.mortality_rate / self.model.duration
             if choice([True, False], p=[chance_of_dying, 1 - chance_of_dying]):
                 # dying
-                print("Agent " + str(self.unique_id) + " died.")
+                # print("Agent " + str(self.unique_id) + " died")
                 self.model.grid.remove_agent(self)
                 self.model.schedule.remove(self)
                 self.model.total_deaths += 1
@@ -47,6 +52,13 @@ class Human(RandomWalker):
 
     def step(self):
         self.move()
+        # update immunity left in case there is one
+        if self.immunity:
+            self.immunity_left -= 1
+            if self.immunity_left <= 0:
+                # print("Agent " + str(self.unique_id) + " has lost it's immunity")
+                self.immunity = False
+                self.immunity_left = self.model.immunity_duration
         if not self.infected:
             return
         # infect others
@@ -55,11 +67,17 @@ class Human(RandomWalker):
             if other_humans[i].infected:
                 # other human is already infected
                 continue
-            # infect others with a chance of model.infection_rate percent
-            if choice([True, False], p=[self.model.infection_rate, 1 - self.model.infection_rate]):
-                print("Agent " + str(self.unique_id) + " has infected Agent " + str(other_humans[i].unique_id))
+            # infect others with a chance of model.infection_rate percent in case the other agent does not have immunity
+            if choice([True, False], p=[self.model.infection_rate, 1 - self.model.infection_rate]) and not other_humans[i].immunity:
+                # print("Agent " + str(self.unique_id) + " has infected Agent " + str(other_humans[i].unique_id))
                 other_humans[i].infected = True
                 self.model.num_infected += 1
                 self.model.total_infected += 1
+                self.model.new_infections += 1
+                # set the other agents immunity
+                if self.model.immunity:
+                    other_humans[i].immunity = True
+                    other_humans[i].immunity_left = self.model.immunity_duration
+
         # update infection
         self.update_infection()
